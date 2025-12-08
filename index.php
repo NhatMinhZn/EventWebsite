@@ -6,10 +6,6 @@ $page_title = "Cổng Thông Tin Sự Kiện";
 $banners_sql = "SELECT * FROM banners WHERE is_active = 1 ORDER BY display_order ASC";
 $banners_result = $conn->query($banners_sql);
 
-// Lấy categories
-$categories_sql = "SELECT * FROM categories ORDER BY name ASC";
-$categories_result = $conn->query($categories_sql);
-
 // Lấy sự kiện nổi bật (featured)
 $featured_sql = "SELECT * FROM events WHERE is_featured = 1 ORDER BY created_at DESC LIMIT 6";
 $featured_result = $conn->query($featured_sql);
@@ -62,25 +58,6 @@ include 'includes/header.php';
     <?php endif; ?>
 </div>
 <?php endif; ?>
-
-<!-- CATEGORIES -->
-<section class="categories-section">
-    <div class="container">
-        <h2>📂 Danh mục sự kiện</h2>
-        <div class="categories-grid">
-            <a href="events.php" class="category-item">
-                <span class="category-icon">🌟</span>
-                <span class="category-name">Tất cả</span>
-            </a>
-            <?php while ($cat = $categories_result->fetch_assoc()): ?>
-                <a href="events.php?category=<?php echo $cat['id']; ?>" class="category-item">
-                    <span class="category-icon"><?php echo $cat['icon']; ?></span>
-                    <span class="category-name"><?php echo htmlspecialchars($cat['name']); ?></span>
-                </a>
-            <?php endwhile; ?>
-        </div>
-    </div>
-</section>
 
 <section class="about-section" id="about">
     <div class="about-box">
@@ -252,53 +229,6 @@ include 'includes/header.php';
     transform: scale(1.2);
 }
 
-/* CATEGORIES */
-.categories-section {
-    background: #f8f9fa;
-    padding: 40px 0;
-    margin-bottom: 40px;
-}
-
-.categories-section h2 {
-    text-align: center;
-    margin-bottom: 30px;
-}
-
-.categories-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 15px;
-}
-
-.category-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
-    text-decoration: none;
-    color: #333;
-    transition: 0.3s;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-}
-
-.category-item:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    color: #0066cc;
-}
-
-.category-icon {
-    font-size: 36px;
-}
-
-.category-name {
-    font-weight: 600;
-    font-size: 14px;
-}
-
 /* FEATURED EVENT */
 .event-card.featured {
     position: relative;
@@ -318,13 +248,36 @@ include 'includes/header.php';
     z-index: 5;
 }
 
-body.dark .categories-section {
-    background: #1a1a1a;
+/* Event card fixed heights */
+.event-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    height: 50px;
+    overflow: hidden;
+    line-height: 25px;
+    display: block;
 }
 
-body.dark .category-item {
-    background: #2a2a2a;
-    color: #f0f0f0;
+.event-location {
+    font-size: 14px;
+    color: #777;
+    margin-bottom: 10px;
+    height: 20px;
+    overflow: hidden;
+    line-height: 20px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.event-description {
+    font-size: 14px;
+    color: #555;
+    margin-top: auto;
+    height: 63px;
+    overflow: hidden;
+    line-height: 21px;
+    display: block;
 }
 
 @media (max-width: 768px) {
@@ -334,10 +287,6 @@ body.dark .category-item {
     
     .slide-caption h2 {
         font-size: 20px;
-    }
-    
-    .categories-grid {
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     }
 }
 </style>

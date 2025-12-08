@@ -3,11 +3,16 @@ require_once 'config/database.php';
 
 $page_title = "Tất cả sự kiện";
 
+// Lấy banners
+$banners_sql = "SELECT * FROM banners WHERE is_active = 1 ORDER BY display_order ASC";
+$banners_result = $conn->query($banners_sql);
+
 // === XỬ LÝ TÌM KIẾM & LỌC ===
 $keyword = isset($_GET['keyword']) ? trim($_GET['keyword']) : '';
+$category_filter = isset($_GET['category']) ? $_GET['category'] : 'all';
+$ward_filter = isset($_GET['ward']) ? $_GET['ward'] : 'all';
 $time_filter = isset($_GET['time']) ? $_GET['time'] : 'all';
 $price_filter = isset($_GET['price']) ? $_GET['price'] : 'all';
-$location_filter = isset($_GET['location']) ? $_GET['location'] : 'all';
 $sort = isset($_GET['sort']) ? $_GET['sort'] : 'newest';
 
 // Build SQL query
@@ -23,6 +28,20 @@ if (!empty($keyword)) {
     $params[] = $search_term;
     $params[] = $search_term;
     $types .= "sss";
+}
+
+// Lọc theo danh mục
+if ($category_filter !== 'all') {
+    $where_conditions[] = "EXISTS (SELECT 1 FROM event_categories WHERE event_categories.event_id = events.id AND event_categories.category_id = ?)";
+    $params[] = $category_filter;
+    $types .= "i";
+}
+
+// Lọc theo xã/phường
+if ($ward_filter !== 'all') {
+    $where_conditions[] = "EXISTS (SELECT 1 FROM event_wards WHERE event_wards.event_id = events.id AND event_wards.ward_id = ?)";
+    $params[] = $ward_filter;
+    $types .= "i";
 }
 
 // Lọc theo thời gian
@@ -77,14 +96,6 @@ switch ($price_filter) {
         break;
 }
 
-// Lọc theo địa điểm
-if ($location_filter !== 'all') {
-    $where_conditions[] = "location LIKE ?";
-    $location_search = "%{$location_filter}%";
-    $params[] = $location_search;
-    $types .= "s";
-}
-
 // Sắp xếp
 $order_by = "created_at DESC"; // Mặc định
 switch ($sort) {
@@ -116,16 +127,76 @@ if (!empty($params)) {
 $stmt->execute();
 $result = $stmt->get_result();
 
-// Lấy danh sách địa điểm unique
-$locations_sql = "SELECT DISTINCT location FROM events ORDER BY location";
-$locations_result = $conn->query($locations_sql);
+// Lấy danh sách categories
+$categories_sql = "SELECT * FROM categories ORDER BY name ASC";
+$categories_result = $conn->query($categories_sql);
+
+// Lấy danh sách xã/phường
+$wards_sql = "SELECT * FROM wards ORDER BY type, display_order ASC";
+$wards_result = $conn->query($wards_sql);
 
 include 'includes/header.php';
 ?>
 
-<section class="hero">
+<!-- BANNER SLIDER -->
+<?php if ($banners_result->num_rows > 0): ?>
+<div class="banner-slider">
+    <div class="slider-container">
+        <?php 
+        $banner_index = 0;
+        while ($banner = $banners_result->fetch_assoc()): 
+        ?>
+            <div class="slide <?php echo $banner_index === 0 ? 'active' : ''; ?>">
+                <?php if (!empty($banner['link'])): ?>
+                    <a href="<?php echo htmlspecialchars($banner['link']); ?>">
+                        <img src="<?php echo htmlspecialchars($banner['image']); ?>" alt="<?php echo htmlspecialchars($banner['title']); ?>">
+                        <div class="slide-caption">
+                            <h2><?php echo htmlspecialchars($banner['title']); ?></h2>
+                        </div>
+                    </a>
+                <?php else: ?>
+                    <img src="<?php echo htmlspecialchars($banner['image']); ?>" alt="<?php echo htmlspecialchars($banner['title']); ?>">
+                    <div class="slide-caption">
+                        <h2><?php echo htmlspecialchars($banner['title']); ?></h2>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php 
+        $banner_index++;
+        endwhile; 
+        ?>
+    </div>
+    
+    <?php if ($banners_result->num_rows > 1): ?>
+    <button class="slider-btn prev" onclick="changeSlide(-1)">❮</button>
+    <button class="slider-btn next" onclick="changeSlide(1)">❯</button>
+    
+    <div class="slider-dots">
+        <?php for ($i = 0; $i < $banner_index; $i++): ?>
+            <span class="dot <?php echo $i === 0 ? 'active' : ''; ?>" onclick="currentSlide(<?php echo $i; ?>)"></span>
+        <?php endfor; ?>
+    </div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<!-- CATEGORIES SECTION -->
+<section class="categories-section">
     <div class="container">
-        <h2>Tất cả các sự kiện nổi bật tại Đà Nẵng</h2>
+        <h2>📂 Danh mục sự kiện</h2>
+        <div class="categories-grid">
+            <a href="events.php" class="category-item <?php echo $category_filter === 'all' ? 'active' : ''; ?>">
+                <span class="category-icon">🌟</span>
+                <span class="category-name">Tất cả</span>
+            </a>
+            <?php while ($cat = $categories_result->fetch_assoc()): ?>
+                <a href="events.php?category=<?php echo $cat['id']; ?>" 
+                   class="category-item <?php echo $category_filter == $cat['id'] ? 'active' : ''; ?>">
+                    <span class="category-icon"><?php echo $cat['icon']; ?></span>
+                    <span class="category-name"><?php echo htmlspecialchars($cat['name']); ?></span>
+                </a>
+            <?php endwhile; ?>
+        </div>
     </div>
 </section>
 
@@ -141,6 +212,29 @@ include 'includes/header.php';
             
             <!-- Bộ lọc -->
             <div class="filter-row">
+                <div class="filter-item">
+                    <label>🏘️ Xã/Phường:</label>
+                    <select name="ward" class="select2-filter-ward">
+                        <option value="all">Tất cả</option>
+                        <?php 
+                        $current_type = '';
+                        while ($ward = $wards_result->fetch_assoc()): 
+                            if ($current_type !== $ward['type']) {
+                                if ($current_type !== '') echo '</optgroup>';
+                                echo '<optgroup label="' . $ward['type'] . '">';
+                                $current_type = $ward['type'];
+                            }
+                        ?>
+                            <option value="<?php echo $ward['id']; ?>" <?php echo $ward_filter == $ward['id'] ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($ward['name']); ?>
+                            </option>
+                        <?php 
+                        endwhile; 
+                        if ($current_type !== '') echo '</optgroup>';
+                        ?>
+                    </select>
+                </div>
+                
                 <div class="filter-item">
                     <label>📅 Thời gian:</label>
                     <select name="time">
@@ -165,19 +259,6 @@ include 'includes/header.php';
                 </div>
                 
                 <div class="filter-item">
-                    <label>📍 Địa điểm:</label>
-                    <select name="location">
-                        <option value="all">Tất cả</option>
-                        <?php while ($loc = $locations_result->fetch_assoc()): ?>
-                            <option value="<?php echo htmlspecialchars($loc['location']); ?>" 
-                                <?php echo $location_filter === $loc['location'] ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($loc['location']); ?>
-                            </option>
-                        <?php endwhile; ?>
-                    </select>
-                </div>
-                
-                <div class="filter-item">
                     <label>📊 Sắp xếp:</label>
                     <select name="sort">
                         <option value="newest" <?php echo $sort === 'newest' ? 'selected' : ''; ?>>Mới nhất</option>
@@ -191,6 +272,7 @@ include 'includes/header.php';
             </div>
             
             <div class="filter-actions">
+                <button type="submit" class="btn-filter">🔍 Lọc kết quả</button>
                 <a href="events.php" class="btn-reset">🔄 Xóa bộ lọc</a>
             </div>
         </form>
@@ -198,7 +280,7 @@ include 'includes/header.php';
     
     <!-- KẾT QUẢ -->
     <div class="search-results">
-        <?php if (!empty($keyword) || $time_filter !== 'all' || $price_filter !== 'all' || $location_filter !== 'all'): ?>
+        <?php if (!empty($keyword) || $category_filter !== 'all' || $ward_filter !== 'all' || $time_filter !== 'all' || $price_filter !== 'all'): ?>
             <p class="result-count">
                 Tìm thấy <strong><?php echo $result->num_rows; ?></strong> sự kiện
                 <?php if (!empty($keyword)): ?>
@@ -246,6 +328,162 @@ include 'includes/header.php';
 </main>
 
 <style>
+/* BANNER SLIDER */
+.banner-slider {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    height: 500px;
+    overflow: hidden;
+    margin-bottom: 0;
+}
+
+.slider-container {
+    position: relative;
+    height: 100%;
+}
+
+.slide {
+    display: none;
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.slide.active {
+    display: block;
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0.8; }
+    to { opacity: 1; }
+}
+
+.slide img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.slide-caption {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    padding: 40px 20px 20px;
+    color: white;
+}
+
+.slide-caption h2 {
+    font-size: 32px;
+    margin: 0;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.slider-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.5);
+    color: white;
+    border: none;
+    padding: 16px 20px;
+    font-size: 24px;
+    cursor: pointer;
+    transition: 0.3s;
+    z-index: 10;
+}
+
+.slider-btn:hover {
+    background: rgba(0,0,0,0.8);
+}
+
+.slider-btn.prev { left: 10px; }
+.slider-btn.next { right: 10px; }
+
+.slider-dots {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 10;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.5);
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.dot.active,
+.dot:hover {
+    background: white;
+    transform: scale(1.2);
+}
+
+/* CATEGORIES SECTION */
+.categories-section {
+    background: #f8f9fa;
+    padding: 40px 0;
+    margin-bottom: 0;
+}
+
+.categories-section h2 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #333;
+}
+
+.categories-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 15px;
+}
+
+.category-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 20px;
+    background: white;
+    border-radius: 10px;
+    text-decoration: none;
+    color: #333;
+    transition: 0.3s;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border: 2px solid transparent;
+}
+
+.category-item:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    color: #0066cc;
+}
+
+.category-item.active {
+    border-color: #0066cc;
+    background: #e6f2ff;
+    color: #0066cc;
+    box-shadow: 0 5px 15px rgba(0,102,204,0.2);
+}
+
+.category-icon {
+    font-size: 36px;
+}
+
+.category-name {
+    font-weight: 600;
+    font-size: 14px;
+}
+
 /* Search & Filter Section */
 .search-filter-section {
     background: white;
@@ -318,6 +556,26 @@ include 'includes/header.php';
     border-color: #0066cc;
 }
 
+/* Select2 override - match with regular selects */
+.filter-item .select2-container {
+    width: 100% !important;
+}
+
+.filter-item .select2-container .select2-selection--single {
+    height: 42px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+}
+
+.filter-item .select2-container .select2-selection--single .select2-selection__rendered {
+    line-height: 38px;
+    padding-left: 10px;
+}
+
+.filter-item .select2-container .select2-selection--single .select2-selection__arrow {
+    height: 38px;
+}
+
 .filter-actions {
     text-align: center;
 }
@@ -331,10 +589,29 @@ include 'includes/header.php';
     border-radius: 6px;
     font-weight: 600;
     transition: 0.3s;
+    border: none;
+    cursor: pointer;
 }
 
 .btn-reset:hover {
     background: #5a6268;
+}
+
+.btn-filter {
+    display: inline-block;
+    padding: 10px 24px;
+    background: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.3s;
+    margin-right: 10px;
+}
+
+.btn-filter:hover {
+    background: #0052a3;
 }
 
 .search-results {
@@ -378,7 +655,58 @@ include 'includes/header.php';
     margin: 8px 0;
 }
 
+/* Event card fixed heights */
+.event-title {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    height: 50px;
+    overflow: hidden;
+    line-height: 25px;
+    display: block;
+}
+
+.event-location {
+    font-size: 14px;
+    color: #777;
+    margin-bottom: 10px;
+    height: 20px;
+    overflow: hidden;
+    line-height: 20px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.event-description {
+    font-size: 14px;
+    color: #555;
+    margin-top: auto;
+    height: 63px;
+    overflow: hidden;
+    line-height: 21px;
+    display: block;
+}
+
 /* Dark mode */
+body.dark .categories-section {
+    background: #1a1a1a;
+}
+
+body.dark .categories-section h2 {
+    color: #f0f0f0;
+}
+
+body.dark .category-item {
+    background: #2a2a2a;
+    color: #f0f0f0;
+}
+
+body.dark .category-item.active {
+    background: #1a3a5a;
+    border-color: #4d94ff;
+    color: #4d94ff;
+}
+
 body.dark .search-filter-section {
     background: #2a2a2a;
 }
@@ -399,6 +727,18 @@ body.dark .no-results p {
 }
 
 @media (max-width: 768px) {
+    .banner-slider {
+        height: 300px;
+    }
+    
+    .slide-caption h2 {
+        font-size: 20px;
+    }
+    
+    .categories-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    }
+    
     .search-box {
         flex-direction: column;
     }
@@ -408,5 +748,68 @@ body.dark .no-results p {
     }
 }
 </style>
+
+<script>
+// Banner Slider
+let currentSlideIndex = 0;
+
+function changeSlide(n) {
+    showSlide(currentSlideIndex += n);
+}
+
+function currentSlide(n) {
+    showSlide(currentSlideIndex = n);
+}
+
+function showSlide(n) {
+    const slides = document.getElementsByClassName('slide');
+    const dots = document.getElementsByClassName('dot');
+    
+    if (n >= slides.length) currentSlideIndex = 0;
+    if (n < 0) currentSlideIndex = slides.length - 1;
+    
+    for (let i = 0; i < slides.length; i++) {
+        slides[i].classList.remove('active');
+    }
+    
+    for (let i = 0; i < dots.length; i++) {
+        dots[i].classList.remove('active');
+    }
+    
+    slides[currentSlideIndex].classList.add('active');
+    if (dots[currentSlideIndex]) {
+        dots[currentSlideIndex].classList.add('active');
+    }
+}
+
+// Auto slide every 5 seconds
+setInterval(() => {
+    changeSlide(1);
+}, 5000);
+</script>
+
+<!-- jQuery (required for Select2) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- Select2 CSS and JS -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    // Select2 cho bộ lọc xã/phường
+    $('.select2-filter-ward').select2({
+        placeholder: "Chọn xã/phường...",
+        allowClear: true,
+        language: {
+            noResults: function() {
+                return "Không tìm thấy kết quả";
+            }
+        }
+    });
+    
+    // Không auto submit - user phải nhấn nút "Lọc"
+});
+</script>
 
 <?php include 'includes/footer.php'; ?>

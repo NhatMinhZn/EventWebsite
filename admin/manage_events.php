@@ -41,7 +41,7 @@ $result = $conn->query($sql);
             <table class="admin-table">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>STT</th>
                         <th>Hình ảnh</th>
                         <th>Tiêu đề</th>
                         <th>Ngày bắt đầu</th>
@@ -54,9 +54,12 @@ $result = $conn->query($sql);
                 </thead>
                 <tbody>
                     <?php if ($result->num_rows > 0): ?>
-                        <?php while ($event = $result->fetch_assoc()): ?>
+                        <?php 
+                        $stt = 1;
+                        while ($event = $result->fetch_assoc()): 
+                        ?>
                             <tr>
-                                <td><?php echo $event['id']; ?></td>
+                                <td><?php echo $stt++; ?></td>
                                 <td><img src="<?php echo htmlspecialchars($event['image']); ?>" alt="" style="width:60px;height:40px;object-fit:cover;"></td>
                                 <td><?php echo htmlspecialchars($event['title']); ?></td>
                                 <td><?php echo date('d/m/Y', strtotime($event['start_date'])); ?></td>

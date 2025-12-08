@@ -126,6 +126,7 @@ header nav ul li a:hover {
   display: flex;
   flex-direction: column;
   transition: transform 0.2s ease;
+  height: 100%;
 }
 
 .event-card:hover {
@@ -142,7 +143,7 @@ header nav ul li a:hover {
 
 .event-card img {
   width: 100%;
-  height: 180px;
+  height: 200px;
   object-fit: cover;
 }
 
@@ -157,31 +158,40 @@ header nav ul li a:hover {
   font-size: 18px;
   font-weight: bold;
   margin-bottom: 8px;
-  min-height: 48px;
+  height: 50px;
   overflow: hidden;
+  line-height: 25px;
   display: block;
-  max-height: 48px;
-  line-height: 1.33em; /* 24px per line */
 }
 
 .event-date {
   font-size: 14px;
   color: #666;
   margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .event-location {
   font-size: 14px;
   color: #777;
   margin-bottom: 10px;
-  min-height: 20px;
+  height: 20px;
+  overflow: hidden;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .event-description {
   font-size: 14px;
-  color: #444;
+  color: #555;
   margin-top: auto;
-  min-height: 48px;
+  height: 63px;
+  overflow: hidden;
+  line-height: 21px;
+  display: block;
 }
 
 /* === EVENT DETAIL PAGE === */
