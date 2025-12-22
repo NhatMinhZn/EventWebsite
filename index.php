@@ -6,13 +6,20 @@ $page_title = "Cổng Thông Tin Sự Kiện";
 $banners_sql = "SELECT * FROM banners WHERE is_active = 1 ORDER BY display_order ASC";
 $banners_result = $conn->query($banners_sql);
 
-// Lấy sự kiện nổi bật (featured)
-$featured_sql = "SELECT * FROM events WHERE is_featured = 1 ORDER BY created_at DESC LIMIT 6";
-$featured_result = $conn->query($featured_sql);
+// Lấy sự kiện nổi bật (featured) - CHỈ HIỂN THỊ SỰ KIỆN CHƯA KẾT THÚC
+$today = date('Y-m-d');
+$featured_sql = "SELECT * FROM events WHERE is_featured = 1 AND end_date >= ? ORDER BY created_at DESC LIMIT 6";
+$featured_stmt = $conn->prepare($featured_sql);
+$featured_stmt->bind_param("s", $today);
+$featured_stmt->execute();
+$featured_result = $featured_stmt->get_result();
 
-// Lấy sự kiện mới nhất
-$latest_sql = "SELECT * FROM events ORDER BY created_at DESC LIMIT 9";
-$latest_result = $conn->query($latest_sql);
+// Lấy sự kiện mới nhất - CHỈ HIỂN THỊ SỰ KIỆN CHƯA KẾT THÚC
+$latest_sql = "SELECT * FROM events WHERE end_date >= ? ORDER BY created_at DESC LIMIT 9";
+$latest_stmt = $conn->prepare($latest_sql);
+$latest_stmt->bind_param("s", $today);
+$latest_stmt->execute();
+$latest_result = $latest_stmt->get_result();
 
 include 'includes/header.php';
 ?>

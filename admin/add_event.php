@@ -64,6 +64,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Vui lòng điền đầy đủ thông tin bắt buộc!";
     }
     
+    // KIỂM TRA NGÀY KẾT THÚC PHẢI SAU HOẶC BẰNG NGÀY HIỆN TẠI
+    if (empty($error)) {
+        $today = date('Y-m-d');
+        if ($end_date < $today) {
+            $error = "❌ Không thể tạo sự kiện đã kết thúc! Ngày kết thúc phải là hôm nay (" . date('d/m/Y') . ") hoặc sau đó.";
+        } elseif ($start_date > $end_date) {
+            $error = "❌ Ngày bắt đầu không thể sau ngày kết thúc!";
+        }
+    }
+    
     if (empty($error)) {
         $sql = "INSERT INTO events (title, description, start_date, end_date, location, image, ticket_price, available_tickets, created_by) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";

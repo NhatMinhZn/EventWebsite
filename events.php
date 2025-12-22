@@ -78,6 +78,13 @@ switch ($time_filter) {
         $params[] = $today;
         $types .= "s";
         break;
+    case 'all':
+    default:
+        // MẶC ĐỊNH: CHỈ HIỂN THỊ SỰ KIỆN CHƯA KẾT THÚC (end_date >= hôm nay)
+        $where_conditions[] = "end_date >= ?";
+        $params[] = $today;
+        $types .= "s";
+        break;
 }
 
 // Lọc theo giá

@@ -104,6 +104,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Vui lòng điền đầy đủ thông tin bắt buộc!";
     }
     
+    // KIỂM TRA NGÀY KẾT THÚC PHẢI SAU HOẶC BẰNG NGÀY HIỆN TẠI
+    if (empty($error)) {
+        $today = date('Y-m-d');
+        if ($end_date < $today) {
+            $error = "❌ Không thể cập nhật sự kiện với ngày kết thúc đã qua! Ngày kết thúc phải là hôm nay (" . date('d/m/Y') . ") hoặc sau đó.";
+        } elseif ($start_date > $end_date) {
+            $error = "❌ Ngày bắt đầu không thể sau ngày kết thúc!";
+        }
+    }
+    
     if (empty($error)) {
         $update_sql = "UPDATE events SET title = ?, description = ?, start_date = ?, end_date = ?, location = ?, image = ?, ticket_price = ?, available_tickets = ? WHERE id = ?";
         $update_stmt = $conn->prepare($update_sql);
