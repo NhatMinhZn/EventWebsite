@@ -14,8 +14,12 @@ $total_events = $conn->query($total_events_sql)->fetch_assoc()['total'];
 $total_users_sql = "SELECT COUNT(*) as total FROM users WHERE role = 'user'";
 $total_users = $conn->query($total_users_sql)->fetch_assoc()['total'];
 
-$total_tickets_sql = "SELECT COUNT(*) as total, IFNULL(SUM(total_price), 0) as revenue FROM tickets";
+$total_tickets_sql = "SELECT COUNT(*) as total, IFNULL(SUM(total_price), 0) as revenue FROM tickets WHERE status = 'approved'";
 $ticket_data = $conn->query($total_tickets_sql)->fetch_assoc();
+
+// Vé chờ duyệt
+$pending_tickets_sql = "SELECT COUNT(*) as total FROM tickets WHERE status = 'pending'";
+$pending_tickets = $conn->query($pending_tickets_sql)->fetch_assoc()['total'];
 
 // Thống kê theo tháng (6 tháng gần nhất)
 $revenue_by_month = [];
@@ -25,7 +29,7 @@ for ($i = 5; $i >= 0; $i--) {
     
     $month_sql = "SELECT IFNULL(SUM(total_price), 0) as revenue 
                   FROM tickets 
-                  WHERE DATE_FORMAT(purchase_date, '%Y-%m') = ?";
+                  WHERE status = 'approved' AND DATE_FORMAT(purchase_date, '%Y-%m') = ?";
     $month_stmt = $conn->prepare($month_sql);
     $month_stmt->bind_param("s", $month);
     $month_stmt->execute();
@@ -40,7 +44,7 @@ for ($i = 5; $i >= 0; $i--) {
 // Top 5 sự kiện bán chạy
 $top_events_sql = "SELECT e.title, COUNT(t.id) as ticket_count, SUM(t.total_price) as revenue
                    FROM events e
-                   LEFT JOIN tickets t ON e.id = t.event_id
+                   LEFT JOIN tickets t ON e.id = t.event_id AND t.status = 'approved'
                    GROUP BY e.id
                    ORDER BY ticket_count DESC
                    LIMIT 5";
@@ -69,11 +73,12 @@ $new_users_today = $new_users_stmt->get_result()->fetch_assoc()['total'];
             <h2>Admin Panel</h2>
             <nav>
                 <ul>
-                    <li><a href="index.php" class="active">Dashboard</a></li>
-                    <li><a href="manage_events.php">Quản lý sự kiện</a></li>
-                    <li><a href="add_event.php">Thêm sự kiện mới</a></li>
-                    <li><a href="../index.php" target="_blank">Xem website</a></li>
-                    <li><a href="logout.php">Đăng xuất</a></li>
+                    <li><a href="index.php" class="active">📊 Dashboard</a></li>
+                    <li><a href="manage_events.php">📅 Quản lý sự kiện</a></li>
+                    <li><a href="add_event.php">➕ Thêm sự kiện mới</a></li>
+                    <li><a href="approve_tickets.php">🎫 Duyệt vé <?php if($pending_tickets > 0) echo "($pending_tickets)"; ?></a></li>
+                    <li><a href="../index.php" target="_blank">🌐 Xem website</a></li>
+                    <li><a href="logout.php">🚪 Đăng xuất</a></li>
                 </ul>
             </nav>
         </aside>
@@ -102,8 +107,18 @@ $new_users_today = $new_users_stmt->get_result()->fetch_assoc()['total'];
                 <div class="stat-card">
                     <div class="stat-icon">🎫</div>
                     <div class="stat-info">
-                        <h3>Vé đã bán</h3>
+                        <h3>Vé đã duyệt</h3>
                         <p class="stat-number"><?php echo $ticket_data['total']; ?></p>
+                    </div>
+                </div>
+                <div class="stat-card" style="border: 2px solid #ffc107;">
+                    <div class="stat-icon">⏳</div>
+                    <div class="stat-info">
+                        <h3>Vé chờ duyệt</h3>
+                        <p class="stat-number" style="color: #ffc107;"><?php echo $pending_tickets; ?></p>
+                        <?php if ($pending_tickets > 0): ?>
+                            <small><a href="approve_tickets.php" style="color: #ffc107;">→ Đi duyệt ngay</a></small>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="stat-card">

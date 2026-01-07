@@ -18,6 +18,13 @@ if ($result->num_rows === 0) {
 $event = $result->fetch_assoc();
 $page_title = $event['title'];
 
+// Lấy TẤT CẢ ẢNH của sự kiện
+$images_sql = "SELECT * FROM event_images WHERE event_id = ? ORDER BY display_order ASC";
+$images_stmt = $conn->prepare($images_sql);
+$images_stmt->bind_param("i", $event_id);
+$images_stmt->execute();
+$event_images = $images_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
 // Lấy danh sách đánh giá
 $reviews_sql = "SELECT r.*, u.username, u.full_name FROM reviews r 
                 JOIN users u ON r.user_id = u.id 
@@ -65,7 +72,6 @@ include 'includes/header.php';
 
 <main class="container">
     <div class="event-detail">
-        <!-- THÔNG TIN SỰ KIỆN -->
         <h2 class="event-title"><?php echo htmlspecialchars($event['title']); ?></h2>
         
         <!-- RATING -->
@@ -90,7 +96,31 @@ include 'includes/header.php';
             </div>
         <?php endif; ?>
         
-        <img src="<?php echo htmlspecialchars($event['image']); ?>" alt="<?php echo htmlspecialchars($event['title']); ?>" style="width:100%; max-height:400px; object-fit:cover; margin-bottom:20px; border-radius:10px;">
+        <!-- SLIDER NHIỀU ẢNH -->
+        <?php if (!empty($event_images)): ?>
+            <div class="event-image-slider">
+                <div class="slider-main">
+                    <?php foreach ($event_images as $index => $img): ?>
+                        <div class="slide-img <?php echo $index === 0 ? 'active' : ''; ?>">
+                            <img src="<?php echo strpos($img['image_url'], 'http') === 0 ? htmlspecialchars($img['image_url']) : htmlspecialchars($img['image_url']); ?>" 
+                                 alt="<?php echo htmlspecialchars($event['title']); ?>">
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                
+                <?php if (count($event_images) > 1): ?>
+                    <button class="slider-nav-btn prev" onclick="changeEventSlide(-1)">❮</button>
+                    <button class="slider-nav-btn next" onclick="changeEventSlide(1)">❯</button>
+                    
+                    <div class="slider-indicators">
+                        <?php foreach ($event_images as $index => $img): ?>
+                            <span class="indicator <?php echo $index === 0 ? 'active' : ''; ?>" 
+                                  onclick="goToSlide(<?php echo $index; ?>)"></span>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
         
         <p class="event-date"><strong>Ngày tổ chức:</strong> Từ <?php echo date('d/m/Y', strtotime($event['start_date'])); ?> đến <?php echo date('d/m/Y', strtotime($event['end_date'])); ?></p>
         <p class="event-location"><strong>Địa điểm:</strong> <?php echo htmlspecialchars($event['location']); ?></p>
@@ -173,6 +203,94 @@ include 'includes/header.php';
 </main>
 
 <style>
+/* EVENT IMAGE SLIDER */
+.event-image-slider {
+    position: relative;
+    width: 100%;
+    max-height: 500px;
+    overflow: hidden;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.slider-main {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.slide-img {
+    display: none;
+    width: 100%;
+    height: 500px;
+}
+
+.slide-img.active {
+    display: block;
+    animation: fadeInSlide 0.5s;
+}
+
+@keyframes fadeInSlide {
+    from { opacity: 0.7; }
+    to { opacity: 1; }
+}
+
+.slide-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.slider-nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.6);
+    color: white;
+    border: none;
+    padding: 15px 20px;
+    font-size: 24px;
+    cursor: pointer;
+    transition: 0.3s;
+    z-index: 10;
+    border-radius: 5px;
+}
+
+.slider-nav-btn:hover {
+    background: rgba(0,0,0,0.9);
+}
+
+.slider-nav-btn.prev { left: 15px; }
+.slider-nav-btn.next { right: 15px; }
+
+.slider-indicators {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.5);
+    cursor: pointer;
+    transition: 0.3s;
+    border: 2px solid rgba(255,255,255,0.7);
+}
+
+.indicator.active,
+.indicator:hover {
+    background: white;
+    transform: scale(1.2);
+}
+
+/* Rating Summary */
 .event-rating-summary {
     display: flex;
     align-items: center;
@@ -207,6 +325,7 @@ include 'includes/header.php';
     color: #666;
 }
 
+/* Reviews */
 .reviews-section {
     margin-top: 50px;
     padding: 30px;
@@ -271,6 +390,7 @@ include 'includes/header.php';
     padding: 40px;
 }
 
+/* Dark mode */
 body.dark .event-rating-summary,
 body.dark .reviews-section,
 body.dark .review-item {
@@ -286,9 +406,54 @@ body.dark .reviewer-info strong {
 body.dark .review-comment {
     color: #ccc;
 }
+
+@media (max-width: 768px) {
+    .event-image-slider,
+    .slide-img {
+        height: 300px;
+    }
+    
+    .slider-nav-btn {
+        padding: 10px 15px;
+        font-size: 20px;
+    }
+}
 </style>
 
 <script>
+let currentEventSlide = 0;
+
+function changeEventSlide(n) {
+    showEventSlide(currentEventSlide += n);
+}
+
+function goToSlide(n) {
+    showEventSlide(currentEventSlide = n);
+}
+
+function showEventSlide(n) {
+    const slides = document.getElementsByClassName('slide-img');
+    const indicators = document.getElementsByClassName('indicator');
+    
+    if (slides.length === 0) return;
+    
+    if (n >= slides.length) currentEventSlide = 0;
+    if (n < 0) currentEventSlide = slides.length - 1;
+    
+    for (let i = 0; i < slides.length; i++) {
+        slides[i].classList.remove('active');
+    }
+    
+    for (let i = 0; i < indicators.length; i++) {
+        indicators[i].classList.remove('active');
+    }
+    
+    slides[currentEventSlide].classList.add('active');
+    if (indicators[currentEventSlide]) {
+        indicators[currentEventSlide].classList.add('active');
+    }
+}
+
 function showCalendarForm() {
     document.getElementById('calendarSection').style.display = 'block';
     document.getElementById('calendarSection').scrollIntoView({ behavior: 'smooth' });

@@ -82,7 +82,31 @@ include 'includes/header.php';
             <div class="event-card featured">
                 <span class="featured-badge">⭐ NỔI BẬT</span>
                 <a href="event.php?id=<?php echo $event['id']; ?>">
-                    <img src="<?php echo htmlspecialchars($event['image']); ?>" alt="<?php echo htmlspecialchars($event['title']); ?>" />
+                    <?php
+// Lấy ảnh thumbnail ngẫu nhiên từ event_images
+$img_sql = "SELECT image_url FROM event_images WHERE event_id = ? ORDER BY RAND() LIMIT 1";
+$img_stmt = $conn->prepare($img_sql);
+$img_stmt->bind_param("i", $event['id']);
+$img_stmt->execute();
+$img_result = $img_stmt->get_result();
+$thumbnail = $img_result->num_rows > 0 ? $img_result->fetch_assoc()['image_url'] : 'https://via.placeholder.com/300x200?text=No+Image';
+?>
+<img src="<?php echo htmlspecialchars($thumbnail); ?>" alt="<?php echo htmlspecialchars($event['title']); ?>" />
+
+<!-- ====================================== -->
+<!-- HOẶC NẾU MUỐN LẤY ẢNH ĐẦU TIÊN THAY VÌ NGẪU NHIÊN -->
+<!-- (Thay RAND() thành display_order ASC) -->
+<!-- ====================================== -->
+
+<?php
+$img_sql = "SELECT image_url FROM event_images WHERE event_id = ? ORDER BY display_order ASC LIMIT 1";
+$img_stmt = $conn->prepare($img_sql);
+$img_stmt->bind_param("i", $event['id']);
+$img_stmt->execute();
+$img_result = $img_stmt->get_result();
+$thumbnail = $img_result->num_rows > 0 ? $img_result->fetch_assoc()['image_url'] : 'https://via.placeholder.com/300x200?text=No+Image';
+?>
+<img src="<?php echo htmlspecialchars($thumbnail); ?>" alt="<?php echo htmlspecialchars($event['title']); ?>" />
                     <div class="event-content">
                         <h3 class="event-title"><?php echo htmlspecialchars($event['title']); ?></h3>
                         <p class="event-date">📅 <?php echo date('d/m/Y', strtotime($event['start_date'])); ?> - <?php echo date('d/m/Y', strtotime($event['end_date'])); ?></p>

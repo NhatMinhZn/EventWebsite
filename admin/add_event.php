@@ -16,74 +16,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $end_date = $_POST['end_date'];
     $location = trim($_POST['location']);
     
-    // Xử lý xã/phường
     $selected_wards = isset($_POST['wards']) ? $_POST['wards'] : [];
-    
-    // Xử lý categories
     $selected_categories = isset($_POST['categories']) ? $_POST['categories'] : [];
     
     $ticket_price = isset($_POST['ticket_price']) ? (float)$_POST['ticket_price'] : 0;
     $available_tickets = isset($_POST['available_tickets']) ? (int)$_POST['available_tickets'] : 0;
     $created_by = $_SESSION['user_id'];
     
-    $image = '';
-    $upload_method = $_POST['upload_method'];
+    // Xử lý nhiều ảnh
+    $image_urls = isset($_POST['image_urls']) ? array_filter($_POST['image_urls']) : [];
+    $uploaded_images = [];
     
-    if ($upload_method === 'url') {
-        $image = trim($_POST['image_url']);
-    } else {
-        if (isset($_FILES['image_file']) && $_FILES['image_file']['error'] === 0) {
-            $file = $_FILES['image_file'];
-            $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            
-            if (!in_array($ext, $allowed)) {
-                $error = "Chỉ chấp nhận file ảnh: JPG, PNG, GIF, WEBP";
-            } elseif ($file['size'] > 5 * 1024 * 1024) {
-                $error = "Kích thước file tối đa 5MB!";
-            } else {
-                $new_filename = 'event_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-                $upload_path = '../uploads/events/';
+    // Upload file
+    if (isset($_FILES['image_files'])) {
+        foreach ($_FILES['image_files']['tmp_name'] as $key => $tmp_name) {
+            if ($_FILES['image_files']['error'][$key] === 0) {
+                $file_name = $_FILES['image_files']['name'][$key];
+                $file_size = $_FILES['image_files']['size'][$key];
+                $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                $ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
                 
-                if (!file_exists($upload_path)) {
-                    mkdir($upload_path, 0777, true);
-                }
-                
-                if (move_uploaded_file($file['tmp_name'], $upload_path . $new_filename)) {
-                    $image = 'uploads/events/' . $new_filename;
+                if (!in_array($ext, $allowed)) {
+                    $error = "Chỉ chấp nhận file ảnh: JPG, PNG, GIF, WEBP";
+                    break;
+                } elseif ($file_size > 5 * 1024 * 1024) {
+                    $error = "Kích thước file tối đa 5MB!";
+                    break;
                 } else {
-                    $error = "Lỗi khi upload file!";
+                    $new_filename = 'event_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
+                    $upload_path = '../uploads/events/';
+                    
+                    if (!file_exists($upload_path)) {
+                        mkdir($upload_path, 0777, true);
+                    }
+                    
+                    if (move_uploaded_file($tmp_name, $upload_path . $new_filename)) {
+                        $uploaded_images[] = 'uploads/events/' . $new_filename;
+                    }
                 }
             }
-        } else {
-            $error = "Vui lòng chọn file ảnh!";
         }
     }
     
-    if (empty($error) && (empty($title) || empty($description) || empty($start_date) || empty($end_date) || empty($location) || empty($image))) {
-        $error = "Vui lòng điền đầy đủ thông tin bắt buộc!";
+    // Gộp ảnh URL và ảnh upload
+    $all_images = array_merge($image_urls, $uploaded_images);
+    
+    if (empty($error) && (empty($title) || empty($description) || empty($start_date) || empty($end_date) || empty($location) || empty($all_images))) {
+        $error = "Vui lòng điền đầy đủ thông tin và thêm ít nhất 1 ảnh!";
     }
     
-    // KIỂM TRA NGÀY KẾT THÚC PHẢI SAU HOẶC BẰNG NGÀY HIỆN TẠI
+    // Kiểm tra ngày
     if (empty($error)) {
         $today = date('Y-m-d');
         if ($end_date < $today) {
-            $error = "❌ Không thể tạo sự kiện đã kết thúc! Ngày kết thúc phải là hôm nay (" . date('d/m/Y') . ") hoặc sau đó.";
+            $error = "❌ Không thể tạo sự kiện đã kết thúc!";
         } elseif ($start_date > $end_date) {
             $error = "❌ Ngày bắt đầu không thể sau ngày kết thúc!";
         }
     }
     
     if (empty($error)) {
-        $sql = "INSERT INTO events (title, description, start_date, end_date, location, image, ticket_price, available_tickets, created_by) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssssssdii", $title, $description, $start_date, $end_date, $location, $image, $ticket_price, $available_tickets, $created_by);
-        
-        if ($stmt->execute()) {
+        $conn->begin_transaction();
+        try {
+            // Thêm event (không cần cột image nữa)
+            $sql = "INSERT INTO events (title, description, start_date, end_date, location, ticket_price, available_tickets, created_by) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("sssssdii", $title, $description, $start_date, $end_date, $location, $ticket_price, $available_tickets, $created_by);
+            $stmt->execute();
+            
             $event_id = $conn->insert_id;
             
-            // Lưu xã/phường đã chọn
+            // Thêm ảnh vào event_images
+            $img_stmt = $conn->prepare("INSERT INTO event_images (event_id, image_url, is_thumbnail, display_order) VALUES (?, ?, ?, ?)");
+            foreach ($all_images as $index => $img_url) {
+                $is_thumbnail = ($index === 0) ? 1 : 0; // Ảnh đầu tiên là thumbnail
+                $display_order = $index + 1;
+                $img_stmt->bind_param("isii", $event_id, $img_url, $is_thumbnail, $display_order);
+                $img_stmt->execute();
+            }
+            
+            // Lưu xã/phường
             if (!empty($selected_wards)) {
                 $ward_stmt = $conn->prepare("INSERT INTO event_wards (event_id, ward_id) VALUES (?, ?)");
                 foreach ($selected_wards as $ward_id) {
@@ -92,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            // Lưu categories đã chọn
+            // Lưu categories
             if (!empty($selected_categories)) {
                 $cat_stmt = $conn->prepare("INSERT INTO event_categories (event_id, category_id) VALUES (?, ?)");
                 foreach ($selected_categories as $category_id) {
@@ -101,10 +114,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
             
-            $success = "Thêm sự kiện thành công!";
-            header("refresh:1.5;url=manage_events.php");
-        } else {
-            $error = "Có lỗi xảy ra: " . $stmt->error;
+            $conn->commit();
+            $success = "✅ Thêm sự kiện thành công với " . count($all_images) . " ảnh!";
+            header("refresh:2;url=manage_events.php");
+            
+        } catch (Exception $e) {
+            $conn->rollback();
+            $error = "Có lỗi xảy ra: " . $e->getMessage();
         }
     }
 }
@@ -113,55 +129,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $page_title; ?></title>
     <link rel="stylesheet" href="css/admin.css">
-    
-    <!-- Select2 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    
     <style>
-    /* Select2 customization */
-    .select2-container {
-        z-index: 9999 !important;
-    }
-
-    .select2-container--default .select2-selection--multiple {
-        border: 2px solid #ddd;
-        border-radius: 6px;
-        min-height: 45px;
-        padding: 5px;
-    }
-
-    .select2-container--default .select2-selection--multiple .select2-selection__choice {
-        background-color: #0066cc;
-        border-color: #0066cc;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 4px;
-        margin: 3px;
-    }
-
-    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove {
-        color: white;
-        margin-right: 5px;
-    }
-
-    .select2-container--default .select2-selection--multiple .select2-selection__choice__remove:hover {
-        color: #ffdddd;
-    }
-
-    .optional {
-        color: #999;
-        font-weight: normal;
-        font-size: 13px;
+    .image-preview-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 15px 0;
     }
     
-    .form-hint {
-        color: #666;
-        font-size: 13px;
-        display: block;
-        margin-top: 5px;
+    .image-preview-item {
+        position: relative;
+        width: 150px;
+        height: 100px;
+        border: 2px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .image-preview-item img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .image-preview-item .remove-img {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: red;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 25px;
+        height: 25px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+    
+    .url-input-group {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .url-input-group input {
+        flex: 1;
+    }
+    
+    .url-input-group button {
+        padding: 10px 20px;
+        background: #0066cc;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
     }
     </style>
 </head>
@@ -171,11 +195,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h2>Admin Panel</h2>
             <nav>
                 <ul>
-                    <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="manage_events.php">Quản lý sự kiện</a></li>
-                    <li><a href="add_event.php" class="active">Thêm sự kiện mới</a></li>
-                    <li><a href="../index.php" target="_blank">Xem website</a></li>
-                    <li><a href="logout.php">Đăng xuất</a></li>
+                    <li><a href="index.php">📊 Dashboard</a></li>
+                    <li><a href="manage_events.php">📅 Quản lý sự kiện</a></li>
+                    <li><a href="add_event.php" class="active">➕ Thêm sự kiện mới</a></li>
+                    <li><a href="approve_tickets.php">🎫 Duyệt vé</a></li>
+                    <li><a href="../index.php" target="_blank">🌐 Xem website</a></li>
+                    <li><a href="logout.php">🚪 Đăng xuất</a></li>
                 </ul>
             </nav>
         </aside>
@@ -193,28 +218,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             <form method="POST" class="admin-form" enctype="multipart/form-data">
                 <label>Tiêu đề sự kiện <span class="required">*</span></label>
-                <input type="text" name="title" value="<?php echo isset($_POST['title']) ? htmlspecialchars($_POST['title']) : ''; ?>" required />
+                <input type="text" name="title" required />
                 
                 <label>Mô tả <span class="required">*</span></label>
-                <textarea name="description" rows="5" required><?php echo isset($_POST['description']) ? htmlspecialchars($_POST['description']) : ''; ?></textarea>
+                <textarea name="description" rows="5" required></textarea>
                 
                 <div class="form-row">
                     <div class="form-col">
                         <label>Ngày bắt đầu <span class="required">*</span></label>
-                        <input type="date" name="start_date" value="<?php echo isset($_POST['start_date']) ? $_POST['start_date'] : ''; ?>" required />
+                        <input type="date" name="start_date" required />
                     </div>
                     <div class="form-col">
                         <label>Ngày kết thúc <span class="required">*</span></label>
-                        <input type="date" name="end_date" value="<?php echo isset($_POST['end_date']) ? $_POST['end_date'] : ''; ?>" required />
+                        <input type="date" name="end_date" required />
                     </div>
                 </div>
                 
                 <label>Địa điểm <span class="required">*</span></label>
-                <input type="text" name="location" placeholder="Ví dụ: Các phường Hải Châu, An Hải, Hòa Cường, Hội An Đông..." value="<?php echo isset($_POST['location']) ? htmlspecialchars($_POST['location']) : ''; ?>" required />
+                <input type="text" name="location" required />
                 
-                <!-- Ô chọn Xã/Phường/Đặc khu -->
-                <label>Xã/Phường/Đặc khu <span class="optional">(Tùy chọn - Chọn nhiều)</span></label>
-                <select name="wards[]" id="wards" class="select2-wards" multiple="multiple" style="width: 100%;">
+                <label>Xã/Phường <span class="optional">(Tùy chọn)</span></label>
+                <select name="wards[]" class="select2-wards" multiple="multiple">
                     <?php
                     $wards_sql = "SELECT * FROM wards ORDER BY type, display_order ASC";
                     $wards_result = $conn->query($wards_sql);
@@ -226,19 +250,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $current_type = $ward['type'];
                         }
                     ?>
-                        <option value="<?php echo $ward['id']; ?>">
-                            <?php echo htmlspecialchars($ward['name']); ?>
-                        </option>
+                        <option value="<?php echo $ward['id']; ?>"><?php echo htmlspecialchars($ward['name']); ?></option>
                     <?php 
                     endwhile; 
                     if ($current_type !== '') echo '</optgroup>';
                     ?>
                 </select>
-                <small class="form-hint">💡 Chọn các xã/phường/đặc khu nơi sự kiện diễn ra. Có thể tìm kiếm bằng cách gõ tên.</small>
                 
-                <!-- Ô chọn Danh mục -->
-                <label>Danh mục sự kiện <span class="optional">(Tùy chọn - Chọn nhiều)</span></label>
-                <select name="categories[]" id="categories" class="select2-categories" multiple="multiple" style="width: 100%;">
+                <label>Danh mục <span class="optional">(Tùy chọn)</span></label>
+                <select name="categories[]" class="select2-categories" multiple="multiple">
                     <?php
                     $categories_sql = "SELECT * FROM categories ORDER BY name ASC";
                     $categories_result = $conn->query($categories_sql);
@@ -249,44 +269,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </option>
                     <?php endwhile; ?>
                 </select>
-                <small class="form-hint">🏷️ Chọn các danh mục phù hợp với sự kiện (Âm nhạc, Thể thao, Du lịch...).</small>
                 
-                <div class="upload-method-selector">
-                    <label>Phương thức tải ảnh <span class="required">*</span></label>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="upload_method" value="url" checked onchange="toggleUploadMethod()" />
-                            🔗 Dùng URL ảnh
-                        </label>
-                        <label>
-                            <input type="radio" name="upload_method" value="file" onchange="toggleUploadMethod()" />
-                            📤 Upload file từ máy
-                        </label>
+                <!-- PHẦN UPLOAD NHIỀU ẢNH -->
+                <label>Ảnh sự kiện <span class="required">*</span> (Có thể thêm nhiều ảnh)</label>
+                
+                <div id="urlImagesSection">
+                    <h4>📷 Thêm ảnh qua URL</h4>
+                    <div class="url-input-group">
+                        <input type="text" id="tempUrlInput" placeholder="Dán URL ảnh vào đây...">
+                        <button type="button" onclick="addImageUrl()">➕ Thêm ảnh</button>
                     </div>
                 </div>
                 
-                <div id="urlUpload" class="upload-section">
-                    <label>URL hình ảnh <span class="required">*</span></label>
-                    <input type="text" name="image_url" id="imageUrl" placeholder="https://example.com/image.jpg" />
-                    <small style="color: #666;">Preview:</small>
-                    <img id="imagePreview" src="" alt="Preview" style="max-width: 300px; max-height: 200px; margin-top: 10px; display: none; border-radius: 8px; border: 1px solid #ddd;" />
+                <div id="fileImagesSection">
+                    <h4>📤 Hoặc upload file từ máy</h4>
+                    <input type="file" name="image_files[]" accept="image/*" multiple>
+                    <small style="color: #666;">Có thể chọn nhiều file cùng lúc. Tối đa 5MB/file.</small>
                 </div>
                 
-                <div id="fileUpload" class="upload-section" style="display: none;">
-                    <label>Chọn file ảnh <span class="required">*</span></label>
-                    <input type="file" name="image_file" id="imageFile" accept="image/*" onchange="previewFile()" />
-                    <small style="color: #666;">Hỗ trợ: JPG, PNG, GIF, WEBP. Tối đa 5MB</small>
-                    <img id="filePreview" src="" alt="Preview" style="max-width: 300px; max-height: 200px; margin-top: 10px; display: none; border-radius: 8px; border: 1px solid #ddd;" />
-                </div>
+                <div id="imagePreviewContainer" class="image-preview-container"></div>
                 
                 <div class="form-row">
                     <div class="form-col">
                         <label>Giá vé (VNĐ)</label>
-                        <input type="number" name="ticket_price" value="<?php echo isset($_POST['ticket_price']) ? $_POST['ticket_price'] : '0'; ?>" min="0" step="1000" />
+                        <input type="number" name="ticket_price" value="0" min="0" step="1000" />
                     </div>
                     <div class="form-col">
                         <label>Số vé có sẵn</label>
-                        <input type="number" name="available_tickets" value="<?php echo isset($_POST['available_tickets']) ? $_POST['available_tickets'] : '0'; ?>" min="0" />
+                        <input type="number" name="available_tickets" value="0" min="0" />
                     </div>
                 </div>
                 
@@ -296,91 +306,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </main>
     </div>
     
-    <!-- jQuery (required for Select2) -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    
-    <!-- Select2 JS -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     
     <script>
-    // Initialize Select2 for wards selection
     $(document).ready(function() {
-        $('.select2-wards').select2({
-            placeholder: "🔍 Tìm kiếm và chọn xã/phường/đặc khu...",
-            allowClear: true,
-            language: {
-                noResults: function() {
-                    return "Không tìm thấy kết quả";
-                },
-                searching: function() {
-                    return "Đang tìm kiếm...";
-                }
-            }
-        });
-        
-        // Initialize Select2 for categories selection
-        $('.select2-categories').select2({
-            placeholder: "🏷️ Chọn danh mục sự kiện...",
-            allowClear: true,
-            language: {
-                noResults: function() {
-                    return "Không tìm thấy kết quả";
-                },
-                searching: function() {
-                    return "Đang tìm kiếm...";
-                }
-            }
+        $('.select2-wards, .select2-categories').select2({
+            placeholder: "Chọn...",
+            allowClear: true
         });
     });
     
-    function toggleUploadMethod() {
-        const method = document.querySelector('input[name="upload_method"]:checked').value;
-        const urlSection = document.getElementById('urlUpload');
-        const fileSection = document.getElementById('fileUpload');
-        
-        if (method === 'url') {
-            urlSection.style.display = 'block';
-            fileSection.style.display = 'none';
-            document.getElementById('imageUrl').required = true;
-            document.getElementById('imageFile').required = false;
-        } else {
-            urlSection.style.display = 'none';
-            fileSection.style.display = 'block';
-            document.getElementById('imageUrl').required = false;
-            document.getElementById('imageFile').required = true;
+    let imageIndex = 0;
+    
+    function addImageUrl() {
+        const url = document.getElementById('tempUrlInput').value.trim();
+        if (!url) {
+            alert('Vui lòng nhập URL ảnh!');
+            return;
         }
+        
+        // Tạo hidden input
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'image_urls[]';
+        input.value = url;
+        input.id = 'img_' + imageIndex;
+        document.querySelector('form').appendChild(input);
+        
+        // Tạo preview
+        const container = document.getElementById('imagePreviewContainer');
+        const div = document.createElement('div');
+        div.className = 'image-preview-item';
+        div.innerHTML = `
+            <img src="${url}" alt="Preview" onerror="this.src='https://via.placeholder.com/150x100?text=Invalid'">
+            <button type="button" class="remove-img" onclick="removeImage('img_${imageIndex}', this.parentElement)">✖</button>
+        `;
+        container.appendChild(div);
+        
+        imageIndex++;
+        document.getElementById('tempUrlInput').value = '';
     }
     
-    const imageUrlInput = document.getElementById('imageUrl');
-    const imagePreview = document.getElementById('imagePreview');
-    
-    if (imageUrlInput && imagePreview) {
-        imageUrlInput.addEventListener('input', function() {
-            const url = this.value.trim();
-            if (url) {
-                imagePreview.src = url;
-                imagePreview.style.display = 'block';
-                imagePreview.onerror = function() {
-                    this.style.display = 'none';
-                };
-            } else {
-                imagePreview.style.display = 'none';
-            }
-        });
-    }
-    
-    function previewFile() {
-        const file = document.getElementById('imageFile').files[0];
-        const preview = document.getElementById('filePreview');
-        
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                preview.src = e.target.result;
-                preview.style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-        }
+    function removeImage(inputId, element) {
+        document.getElementById(inputId).remove();
+        element.remove();
     }
     </script>
 </body>

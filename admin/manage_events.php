@@ -7,8 +7,15 @@ if (!is_logged_in() || !is_admin()) {
 
 $page_title = "Quản lý sự kiện";
 
+// Lấy số vé chờ duyệt
+$pending_tickets_sql = "SELECT COUNT(*) as total FROM tickets WHERE status = 'pending'";
+$pending_tickets = $conn->query($pending_tickets_sql)->fetch_assoc()['total'];
+
 // Lấy danh sách sự kiện
-$sql = "SELECT * FROM events ORDER BY created_at DESC";
+$sql = "SELECT e.*, 
+        (SELECT image_url FROM event_images WHERE event_id = e.id ORDER BY display_order ASC LIMIT 1) as thumbnail
+        FROM events e 
+        ORDER BY e.created_at DESC";
 $result = $conn->query($sql);
 ?>
 <!DOCTYPE html>
@@ -25,11 +32,12 @@ $result = $conn->query($sql);
             <h2>Admin Panel</h2>
             <nav>
                 <ul>
-                    <li><a href="index.php">Dashboard</a></li>
-                    <li><a href="manage_events.php" class="active">Quản lý sự kiện</a></li>
-                    <li><a href="add_event.php">Thêm sự kiện mới</a></li>
-                    <li><a href="../index.php" target="_blank">Xem website</a></li>
-                    <li><a href="logout.php">Đăng xuất</a></li>
+                    <li><a href="index.php">📊 Dashboard</a></li>
+                    <li><a href="manage_events.php" class="active">📅 Quản lý sự kiện</a></li>
+                    <li><a href="add_event.php">➕ Thêm sự kiện mới</a></li>
+                    <li><a href="approve_tickets.php">🎫 Duyệt vé <?php if($pending_tickets > 0) echo "($pending_tickets)"; ?></a></li>
+                    <li><a href="../index.php" target="_blank">🌐 Xem website</a></li>
+                    <li><a href="logout.php">🚪 Đăng xuất</a></li>
                 </ul>
             </nav>
         </aside>
@@ -57,10 +65,11 @@ $result = $conn->query($sql);
                         <?php 
                         $stt = 1;
                         while ($event = $result->fetch_assoc()): 
+                            $thumbnail = !empty($event['thumbnail']) ? $event['thumbnail'] : 'https://via.placeholder.com/60x40?text=No+Image';
                         ?>
                             <tr>
                                 <td><?php echo $stt++; ?></td>
-                                <td><img src="<?php echo htmlspecialchars($event['image']); ?>" alt="" style="width:60px;height:40px;object-fit:cover;"></td>
+                                <td><img src="<?php echo htmlspecialchars($thumbnail); ?>" alt="" style="width:60px;height:40px;object-fit:cover;"></td>
                                 <td><?php echo htmlspecialchars($event['title']); ?></td>
                                 <td><?php echo date('d/m/Y', strtotime($event['start_date'])); ?></td>
                                 <td><?php echo date('d/m/Y', strtotime($event['end_date'])); ?></td>

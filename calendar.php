@@ -31,16 +31,27 @@ include 'includes/header.php';
             <?php while ($item = $result->fetch_assoc()): ?>
                 <div class="calendar-item">
                     <div class="calendar-event-info">
-                        <img src="<?php echo htmlspecialchars($item['image']); ?>" alt="<?php echo htmlspecialchars($item['title']); ?>" class="calendar-img" />
+                        <?php
+                        // Lấy ảnh thumbnail của sự kiện
+                        $img_sql = "SELECT image_url FROM event_images WHERE event_id = ? ORDER BY is_thumbnail DESC, display_order ASC LIMIT 1";
+                        $img_stmt = $conn->prepare($img_sql);
+                        $img_stmt->bind_param("i", $item['id']);
+                        $img_stmt->execute();
+                        $img_result = $img_stmt->get_result();
+                        $image_url = $img_result->num_rows > 0 ? $img_result->fetch_assoc()['image_url'] : 'https://via.placeholder.com/200x130?text=No+Image';
+                        ?>
+                        <img src="<?php echo htmlspecialchars($image_url); ?>" alt="<?php echo htmlspecialchars($item['title']); ?>" class="calendar-img" />
                         <div class="calendar-details">
                             <h3><a href="event.php?id=<?php echo $item['id']; ?>"><?php echo htmlspecialchars($item['title']); ?></a></h3>
                             <p class="event-date">📅 <?php echo date('d/m/Y', strtotime($item['start_date'])); ?> - <?php echo date('d/m/Y', strtotime($item['end_date'])); ?></p>
                             <p class="event-location">📍 <?php echo htmlspecialchars($item['location']); ?></p>
                             
-                            <?php if ($item['is_purchased']): ?>
-                                <span class="badge badge-success">✓ Đã mua vé</span>
+                            <?php if ($item['is_purchased'] === 'approved'): ?>
+                                <span class="badge badge-success">✅ Đã mua vé</span>
+                            <?php elseif ($item['is_purchased'] === 'pending'): ?>
+                                <span class="badge badge-warning">⏳ Chờ duyệt</span>
                             <?php else: ?>
-                                <span class="badge badge-info">Đã note tham gia</span>
+                                <span class="badge badge-info">📝 Đã lưu lịch</span>
                             <?php endif; ?>
                             
                             <?php if (!empty($item['note'])): ?>
@@ -57,5 +68,13 @@ include 'includes/header.php';
         <p class="empty-message">Bạn chưa có sự kiện nào trong lịch. <a href="events.php">Khám phá sự kiện</a></p>
     <?php endif; ?>
 </main>
+
+<style>
+.badge-warning {
+    background: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+</style>
 
 <?php include 'includes/footer.php'; ?>
